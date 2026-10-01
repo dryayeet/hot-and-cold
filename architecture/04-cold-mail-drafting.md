@@ -1,6 +1,8 @@
 # Stage 4: Cold Mail Drafting (and Scheduled Sending)
 
-Sources: `Outreach agent.pdf`, sections "Layer 4: Cold Mail Drafting", "Phase 4: Cold Mail Drafting", "Phase 5: HITL Approval Gate", "Phase 6: Sending", "Risk Mitigation", "Why Gmail API (not SMTP)", "Why 8:30 AM Mon-Fri". Grounded in that PDF.
+Sources: `Outreach agent.pdf`, sections "Layer 4: Cold Mail Drafting", "Phase 4: Cold Mail Drafting", "Phase 5: HITL Approval Gate", "Phase 6: Sending", "Risk Mitigation", "Why Gmail API (not SMTP)", "Why 8:30 AM Mon-Fri". Grounded in that PDF, as revised by lemon on 2026-10-01 (OpenRouter instead of Claude API; send-time logging for analytics).
+
+Part of the LangGraph agent: this stage is a node/subgraph in the graph. Gmail API stays, per lemon.
 
 ## Goal
 
@@ -60,24 +62,26 @@ Lemon reviews all drafts before anything leaves the account:
 1. Schedule check: is it Mon-Fri, 8:30 AM IST? If not, queue for the next available slot
 2. Spread sends: never all 50 at once. 5-10 per day across the week; the spam mitigation caps any day at 20
 3. Send via Gmail API (draft converts to sent)
-4. Log: sent date/time (ISO), Sheet status "Sent", follow-up due = sent date + 7 days
+4. Log: sent date/time (ISO), status "Sent", follow-up due = sent date + 7 days
+5. **Send-time analytics (lemon, 2026-10-01): every send is logged with its exact timestamp so that, as responses accumulate, the data can be analyzed for which send times correlate with replies, and the 8:30 AM default can be optimized over time**
 
 ## Why these choices (PDF's own justifications)
 
 - Gmail API over SMTP: drafts are a built-in HITL gate sitting in the inbox awaiting review; easier reply/open tracking through Gmail thread context; no sending infrastructure to manage
 - 8:30 AM Mon-Fri IST: cold mails during work hours get higher open rates; future A/B tests (9 AM, 6 PM) will find the optimal window
 
-## Sheet columns touched
+## DB fields touched (formerly Sheet columns; schema discussion pending, see `05-master-database.md`)
 
-- V: Draft Date (ISO timestamp)
-- W: Mail Status (Draft / Sent / Bounced / No Response / Positive Response)
-- X: Sent Date (only if sent)
+- Draft Date (ISO timestamp)
+- Mail Status (Draft / Sent / Bounced / No Response / Positive Response)
+- Sent Date (ISO timestamp, only if sent), kept precise for send-time analytics
 
 ## Tools
 
-- Gmail API via `google-api-python-client` (drafting, sending, scheduling)
-- Claude API for drafting and tone checking
+- **Gmail API** via `google-api-python-client` (drafting, sending, scheduling)
+- **OpenRouter API** (lemon's key, model TBD): drafting and tone checking. No Claude API anywhere in this project (lemon, 2026-10-01)
 - Scheduling: APScheduler / cron per the PDF tech stack
+- **SQLite** for the send log and status fields
 
 ## Risks (from the PDF)
 

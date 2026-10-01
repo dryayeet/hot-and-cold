@@ -1,6 +1,8 @@
 # Stage 3: Resume Customization
 
-Sources: `Outreach agent.pdf`, sections "Layer 3: Resume Customization", "Phase 3: Resume Customization", "Risk Mitigation: Resume PDF Generation Fails". Plus operating discipline imported from the resume_lab `CLAUDE.md`, per lemon's instruction.
+Sources: `Outreach agent.pdf`, sections "Layer 3: Resume Customization", "Phase 3: Resume Customization", "Risk Mitigation: Resume PDF Generation Fails". Plus operating discipline imported from the resume_lab `CLAUDE.md`, per lemon's instruction. Revised by lemon on 2026-10-01: no Google Drive for now; PDF tooling to be validated when this stage is built; `pagecount.py` will be provided by lemon.
+
+Part of the LangGraph agent: this stage is a node/subgraph in the graph.
 
 ## Goal
 
@@ -40,7 +42,9 @@ The PDF's worked example:
 **Toolchain decision (2026-10-01, lemon approved):** the PDF originally specified `pdflatex`/`latexmk` plus a PyPDF2/pdfplumber page-count check. That is superseded by the resume_lab-proven toolchain:
 
 - Compile: `tools/tectonic.exe out/<name>.tex --outdir out` (Tectonic v0.17.0, runs XeTeX; `main.tex` keeps its `\ifPDFTeX` guards, do not remove them)
-- One-page gate: `python tools/pagecount.py out/<name>.pdf`, exits 1 unless the PDF is exactly one page
+- One-page gate: `python tools/pagecount.py out/<name>.pdf`, exits 1 unless the PDF is exactly one page. **`pagecount.py` will be provided by lemon** (it is not in this repo yet)
+
+**AMBIGUITY: the PDF toolchain (tectonic binary, pagecount.py) has not been validated inside this repo yet. First task when building this stage: bring the tools in, compile a sample, and verify the gate. Tracked in todo.md.**
 
 If the output exceeds one page, in this order (from resume_lab CLAUDE.md, matching the PDF's condense loop):
 
@@ -55,8 +59,8 @@ Recompile and re-run the gate after each change. If still over one page: flag fo
 ### 4. Store
 
 - Save PDF as `resume_CompanyName.pdf` (mail stage names the attachment `Prajwal_Pandey_[CompanyName].pdf`)
-- Upload to Google Drive for later sharing
-- Log the customizations applied to the Sheet
+- Store locally in the repo output area (e.g. `out/resumes/`). No Google Drive upload at this stage (lemon, 2026-10-01); the DB stores the local path, and the Drive/object-storage question is revisited at the Supabase migration
+- Log the customizations applied to the SQLite database
 
 ## Anti-hallucination constraints (imported from resume_lab CLAUDE.md)
 
@@ -71,17 +75,17 @@ These govern what the agent may write into a customized resume:
 7. **Layout traps pagecount cannot catch:** heading/date collisions in `\resumeProjectHeading` and `\resumeSubheading` rows (keep the left side under roughly 75 characters), swallowed `%` from unescaped percentages (escape `%`, `&`, `#`, `_`, `$`). Only reading the compiled PDF catches these, so the verification step must include reading the PDF, not just running pagecount.
 8. **Escalation on ambiguity:** if a pasted or edited version conflicts, lemon's version wins on facts, the verified repo version wins on code-verified claims.
 
-## Sheet columns touched
+## DB fields touched (formerly Sheet columns; schema discussion pending, see `05-master-database.md`)
 
-- T: Resume Customizations Applied (bullet point list)
-- U: Customized Resume Link (Google Drive shareable URL)
+- Resume Customizations Applied (bullet point list)
+- Customized Resume Link (local filesystem path for now)
 
 ## Tools
 
 - Parsing/editing: `pylatexenc` / regex
-- Compile: `tools/tectonic.exe` (see toolchain decision above)
-- Validation: `tools/pagecount.py`; PyPDF2/pdfplumber remain available for metadata extraction per the PDF
-- Storage: Google Drive API
+- Compile: `tools/tectonic.exe` (see toolchain decision and validation ambiguity above)
+- Validation: `tools/pagecount.py` (to be provided by lemon); PyPDF2/pdfplumber remain available for metadata extraction per the PDF
+- Storage: local filesystem + SQLite (no Google Drive for now)
 
 ## HITL gates
 

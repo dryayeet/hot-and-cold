@@ -1,6 +1,8 @@
 # Stage 7: Interview Prep Deep-Dive
 
-Sources: `Outreach agent.pdf`, sections "Layer 7: Interview Prep Deep-Dive", "Phase 9: Interview Prep". Grounded in that PDF.
+Sources: `Outreach agent.pdf`, sections "Layer 7: Interview Prep Deep-Dive", "Phase 9: Interview Prep". Grounded in that PDF, as revised by lemon on 2026-10-01 (no Claude API, no Google Sheets, no Google Drive).
+
+Part of the LangGraph agent: this stage is a node/subgraph in the graph.
 
 ## Goal
 
@@ -62,17 +64,17 @@ Detailed company, role, and interview research after a positive response. This s
 
 ## Output
 
-Everything logged to the Google Sheet under the Interview Prep section (columns AF-AL): company deep-dive summary link, role deep-dive summary, fit analysis, interview structure, top 10 questions, prep plan link, interview schedule once known.
+Research is written to **local markdown files** in a per-company prep folder (e.g. `prep/<company>/...`, mirroring the resume_lab convention; **AMBIGUITY: exact file structure undecided, tracked in todo.md**), with pointers (file paths) recorded in the SQLite database under the prep fields: company deep-dive, role deep-dive, fit analysis, interview structure, top 10 questions, prep plan, interview schedule once known.
 
 ## HITL gates
 
-None enforced by the agent here beyond logging; prep consumption is human. Interview scheduling dates are recorded (column AL) as lemon confirms them.
+None enforced by the agent here beyond logging; prep consumption is human. Interview scheduling dates are recorded in the DB as lemon confirms them.
 
 ## Tools
 
-- Claude API with web search (research engine)
-- gspread (persistence)
-- Google Drive (study guide / detailed notes storage, linked from the Sheet)
+- **OpenRouter API** (lemon's key, model TBD) with web search (native or the `web` plugin / Exa engine, see Stage 1 for grounded plugin details) as the research engine. No Claude API anywhere in this project
+- **SQLite** for the prep field pointers
+- **Local markdown files** for the prep content itself. No Google Sheets, no Google Drive (lemon, 2026-10-01)
 
 ## Future roadmap items extending this stage
 
