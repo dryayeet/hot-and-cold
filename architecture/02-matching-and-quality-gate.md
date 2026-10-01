@@ -1,6 +1,8 @@
 # Stage 2: Matching & Quality Gate
 
-Source: `Outreach agent.pdf`, section "Layer 2: Matching & Quality Gate". Grounded in that PDF.
+Source: `Outreach agent.pdf`, section "Layer 2: Matching & Quality Gate". Grounded in that PDF, as revised by lemon on 2026-10-01 (OpenRouter instead of Claude API, SQLite instead of Google Sheets).
+
+Part of the LangGraph agent: this stage is a node/subgraph in the graph.
 
 ## Goal
 
@@ -36,11 +38,11 @@ For each Company + Role:
 - For flagged companies: a hold state pending manual review
 - Per company: match score, keyword gaps, reasoning
 
-## Sheet columns touched
+## DB fields touched (formerly Sheet columns; schema discussion pending, see `05-master-database.md`)
 
-- R: Match Score (1-10)
-- S: Keyword Gaps, e.g. "Missing: Kubernetes, Docker"
-- Match reasoning is logged alongside per the PDF ("Store in Google Sheet: Match score, keyword gaps, reasoning")
+- Match Score (1-10)
+- Keyword Gaps, e.g. "Missing: Kubernetes, Docker"
+- Match reasoning is stored alongside, per the PDF ("Store in Google Sheet: Match score, keyword gaps, reasoning")
 
 ## HITL gates
 
@@ -48,8 +50,8 @@ Companies below the threshold stop here until lemon reviews them. This is the fi
 
 ## Tools
 
-- Claude API for JD parsing and cross-referencing (LLM analysis, per the PDF's tech stack)
-- Google Sheets via gspread for persistence
+- **OpenRouter API** (lemon's key, model TBD): JD parsing and cross-referencing. No Claude API anywhere in this project (lemon, 2026-10-01)
+- **SQLite** for persistence. **AMBIGUITY: DB structure to be discussed, tracked in todo.md and `05-master-database.md`**
 
 ## Risks addressed
 
