@@ -1,6 +1,6 @@
 # Database Schema (Supabase Postgres)
 
-**Status: PROPOSED, awaiting lemon's approval.** Once approved, this becomes `supabase/migrations/0001_init.sql`. No SQL has been written yet.
+**Status: PROPOSED, all open questions resolved (2026-10-01), awaiting lemon's final approval.** Once approved, this becomes `supabase/migrations/0001_init.sql`. No SQL has been written yet. Connectivity to the Supabase project is verified (Postgres 17.11 via session pooler).
 
 Covers the whole agent: every field from the PDF's A-AN schema (mapping in section 7), plus agent runs, HITL gates, scheduling, events/analytics, and embeddings. Supersedes the SQLite plan in `05-master-database.md`.
 
@@ -8,9 +8,13 @@ Decisions this design is built on (lemon, 2026-10-01):
 
 | Decision | Choice |
 | --- | --- |
-| Tenancy | Multi-user ready: `user_id` on every user-owned table, Supabase Auth + RLS from day one |
+| Tenancy | Multi-user ready: `user_id` on every table, Supabase Auth + RLS from day one |
 | Engine | Straight to Postgres on Supabase, no SQLite phase. Postgres-native features allowed |
-| Expansion included now | Embeddings (pgvector) |
+| Company data | **Per-user copies** (answer 1). No cross-user sharing or dedupe of companies/news/postings |
+| Embedding model | **Deferred** (answer 2): `embeddings` table created without the vector column; the column (and its dimension) is added by a later migration once the model is picked, before Stage 2 semantic matching is built |
+| File storage | **Supabase Storage** (answer 3): private buckets for resumes and prep files |
+| Email retention | **Full reply text** (answer 4), as the PDF specifies |
+| FACTS modeling | **Deferred** (answer 5): `candidate_facts` / `resume_claims` NOT in the initial migration; FACTS.md stays a plain file the resume stage reads, resume_lab-style. Sketch kept in section 10 |
 | Not included now | Dedicated LLM usage table, A/B testing tables, LangGraph checkpoint tables. Each has an expansion hook noted in section 10 |
 
 Grounding used: Supabase RLS docs (policy per operation, `(select auth.uid())` wrapping, index every policy column, `security_invoker` views, revoke default grants), Supabase pgvector docs (extension in `extensions` schema, HNSW filtering caveat), Supabase partitioning docs (avoid partitioning until needed), OpenRouter embeddings docs (`/embeddings` endpoint, cosine similarity recommended, cache embeddings since output is deterministic).
@@ -20,7 +24,7 @@ Grounding used: Supabase RLS docs (policy per operation, `(select auth.uid())` w
 ## 1. Design principles
 
 1. **Normalized core, jsonb edges.** Anything queried, filtered, joined, or aggregated is a real column. Anything descriptive, variable, or not yet understood goes in an `attributes jsonb not null default '{}'` column. New fields start in `attributes`; when they prove useful they get promoted to a column by migration. This is the "scope for expansion" mechanism.
-2. **Public facts are shared, personal data is private.** Company intelligence and job postings are public web information, so they live in global tables deduplicated across users (one research cost per company, not per user). Contacts, emails, scores, messages, and everything else are per user.
+2. **Everything is per-user.** No table is shared across users: company intel, news, and postings are researched per user and owned per user (lemon's answer 1). Trade-off accepted: if a second user ever arrives, the same company gets researched twice. All tables get standard `user_id` RLS.
 3. **History, not overwrites.** Company intelligence is captured as time-stamped snapshots; scores are versioned assessments; status changes are events. Analytics depend on knowing what was true when.
 4. **Every state change emits an event**, written in the same transaction as the change. The `events` table is the analytics backbone and the audit log.
 5. **Rules are config, not code.** The PDF's numbers (threshold 6, follow-up at day 7, close at day 14, Mon-Fri 8:30 AM IST, 5-10 sends/day, cap 20) live in `profiles` columns with those defaults, so they can be tuned per user and later optimized from the send-time analytics.
@@ -52,7 +56,6 @@ The Python agent connects server-side (Supavisor pooler) with a privileged role 
 ```mermaid
 erDiagram
     profiles ||--o{ candidate_documents : owns
-    candidate_documents ||--o{ candidate_facts : "split into"
     profiles ||--o{ campaigns : runs
     campaigns ||--o{ agent_runs : executes
     campaigns ||--o{ opportunities : finds
@@ -68,8 +71,6 @@ erDiagram
     contacts ||--o{ opportunity_contacts : ""
     opportunities ||--o{ match_assessments : scored
     opportunities ||--o{ resume_versions : tailored
-    resume_versions ||--o{ resume_claims : contains
-    candidate_facts ||--o{ resume_claims : "backs"
     opportunities ||--o{ email_threads : ""
     email_threads ||--o{ outreach_messages : ""
     email_threads ||--o{ inbound_messages : ""
@@ -80,6 +81,8 @@ erDiagram
     opportunities ||--o{ interviews : ""
     profiles ||--o{ events : ""
 ```
+
+Every entity above is user-owned (per-user company data, answer 1); the `user_id` edges are omitted from the diagram for readability.
 
 Grain: **one `opportunities` row = one user + company + role**, exactly the PDF's "one row = one Company + Role". Everything per-pipeline hangs off it.
 
@@ -108,7 +111,7 @@ Notation: `PK`, `FK`, `U` = unique, `NN` = not null. `user_id` on user-owned tab
 
 ### B. Candidate inputs
 
-**`candidate_documents`**: versioned copies of the Phase 1 inputs.
+**`candidate_documents`**: versioned copies of the Phase 1 inputs (base resume, projects markdown, FACTS.md kept as-is). FACTS is stored as a document copy only; per-fact atomization is deferred (section 10).
 
 | Column | Type | Notes |
 | --- | --- | --- |
@@ -119,18 +122,6 @@ Notation: `PK`, `FK`, `U` = unique, `NN` = not null. `user_id` on user-owned tab
 | content_sha256 | text NN | Skip re-ingest when unchanged |
 | is_active | boolean NN default true | Partial U (user_id, kind) where is_active |
 | attributes | jsonb | e.g. parsed sections, extracted technologies |
-
-**`candidate_facts`**: FACTS.md atomized into one row per fact. This is what makes the resume_lab One Rule ("every claim traces to a line in FACTS.md") enforceable by the database.
-
-| Column | Type | Notes |
-| --- | --- | --- |
-| id | uuid PK | |
-| document_id | uuid FK candidate_documents | |
-| line_ref | text | Pointer back into FACTS.md |
-| category | text CHECK in (`experience`, `project`, `skill`, `education`, `achievement`, `other`) | |
-| text | text NN | Exact fact wording |
-| status | text NN CHECK in (`confirmed`, `unresolved`, `false`) | FACTS.md markers: confirmed, unresolved, found-false. `false` facts can never back a claim |
-| metadata | jsonb | Numbers, dates, tech tags |
 
 ### C. Campaigns and agent runs
 
@@ -160,9 +151,9 @@ Notation: `PK`, `FK`, `U` = unique, `NN` = not null. `user_id` on user-owned tab
 | stats | jsonb | Counts produced, cost totals |
 | error | jsonb | |
 
-### D. Company intelligence (global, shared across users)
+### D. Company intelligence (per user, per answer 1)
 
-Readable by any `authenticated` user, writable only by the agent role.
+All four tables are user-owned with standard `user_id` RLS. Uniqueness is scoped per user, so the same company can exist for two users and that is by design.
 
 **`companies`**
 
@@ -170,7 +161,7 @@ Readable by any `authenticated` user, writable only by the agent role.
 | --- | --- | --- |
 | id | uuid PK | |
 | name | text NN | PDF col A |
-| domain | citext | Partial U where not null; main dedupe key |
+| domain | citext | Partial U (user_id, domain) where not null; dedupe key within a user |
 | website_url | text | PDF col C |
 | linkedin_url | text | |
 | careers_url | text | |
@@ -180,7 +171,7 @@ Readable by any `authenticated` user, writable only by the agent role.
 | latest_snapshot_id | uuid FK company_snapshots | Denormalized pointer for fast reads |
 | attributes | jsonb | |
 
-Near-duplicate names without a domain ("Acme AI" vs "Acme.ai") are caught via embeddings (section N).
+Near-duplicate names without a domain ("Acme AI" vs "Acme.ai") are caught via embeddings once activated (section N); until then, domain-normalization rules in the Stage 1 node handle it.
 
 **`company_snapshots`**: intelligence at a point in time. Append-only.
 
@@ -210,7 +201,7 @@ Near-duplicate names without a domain ("Acme AI" vs "Acme.ai") are caught via em
 | company_id | uuid FK NN | |
 | kind | text CHECK in (`funding`, `launch`, `layoff`, `hiring`, `leadership`, `scandal`, `other`) | |
 | title | text NN | |
-| url | text | U (company_id, url) |
+| url | text | U (user_id, company_id, url) |
 | published_at | timestamptz | PDF requires timestamps |
 | summary | text | |
 
@@ -221,7 +212,7 @@ Near-duplicate names without a domain ("Acme AI" vs "Acme.ai") are caught via em
 | id | uuid PK | |
 | company_id | uuid FK NN | |
 | title | text NN | |
-| url | text NN U | PDF col D |
+| url | text NN | PDF col D. U (user_id, url) |
 | source | text | Job board name |
 | location / remote_type / seniority / employment_type | text | |
 | description | text | Full JD text |
@@ -339,8 +330,8 @@ Note: the PDF calls the score "1-10", but its components sum to 0-10. The CHECK 
 | base_document_id | uuid FK candidate_documents | |
 | base_variant | text | Archetype base (Backend/SDE, AI/ML, Data, Research) |
 | tex_source | text | |
-| pdf_path | text | PDF col U |
-| storage_backend | text NN CHECK in (`local`, `supabase_storage`) | Lets the files decision stay open |
+| pdf_path | text | Storage path in the `resumes` bucket, e.g. `{user_id}/{opportunity_id}/Prajwal_Pandey_Acme.pdf` |
+| storage_backend | text NN default `supabase_storage` | `local` kept as an option |
 | compile_status | text NN CHECK in (`pending`, `compiled`, `failed`, `overflow_flagged`) | |
 | page_count | smallint | |
 | passed_page_gate | boolean | pagecount.py result |
@@ -349,18 +340,7 @@ Note: the PDF calls the score "1-10", but its components sum to 0-10. The CHECK 
 | gaps_reported | text[] | JD asks with no FACTS backing |
 | is_final | boolean NN default false | Partial U (opportunity_id) where is_final |
 
-**`resume_claims`**: every bullet on a generated resume, tied to a fact.
-
-| Column | Type | Notes |
-| --- | --- | --- |
-| id | uuid PK | |
-| resume_version_id | uuid FK NN | |
-| section | text | experience / project / skills ... |
-| position | smallint | Order on the page |
-| claim_text | text NN | |
-| fact_id | uuid FK candidate_facts **NN** | The One Rule, enforced: no bullet without a backing fact |
-
-A trigger rejects claims whose fact has status `false`. One fact per claim on purpose: resume_lab names "merge inflation" (two facts combined into one bigger claim) as a failure mode.
+Claim-level traceability (`resume_claims` linked to atomized `candidate_facts`) is **deferred** per answer 5; FACTS.md remains the plain file the resume stage reads. The deferred design sketch is in section 10.
 
 ### I. Mail, threads, replies (Stages 4 and 6)
 
@@ -467,7 +447,7 @@ Trade-off: the polymorphic pointer has no FK integrity. Accepted because it lets
 | interview_structure | jsonb | PDF col AI: rounds, formats, topics, timing |
 | top_questions | jsonb | PDF col AJ |
 | prep_plan_path | text | PDF col AK |
-| storage_backend | text | Same convention as resumes |
+| storage_backend | text NN default `supabase_storage` | |
 | sources | jsonb | |
 
 **`interviews`**: PDF col AL, one row per round.
@@ -507,27 +487,22 @@ Starter vocabulary: `opportunity.created`, `opportunity.status_changed`, `opport
 
 Indexes: `(user_id, occurred_at desc)`, `(event_type, occurred_at)`, `(opportunity_id)`, `(entity_type, entity_id)`. Not partitioned at launch, per Supabase guidance to avoid partitioning until it is needed. The table is written so that converting to monthly range partitions on `occurred_at` later is mechanical (see section 10).
 
-### N. Embeddings (pgvector)
+### N. Embeddings (pgvector, model deferred)
 
-**`embeddings`**
+**`embeddings`**: created now, vector column added later.
 
 | Column | Type | Notes |
 | --- | --- | --- |
 | id | uuid PK | |
-| user_id | uuid nullable | Null for global entities (companies, postings) |
-| entity_type | text NN CHECK in (`candidate_fact`, `job_posting`, `company`, `resume_claim`) | |
+| user_id | uuid NN | Per-user world (answer 1); indexes and RLS standard |
+| entity_type | text NN CHECK in (`candidate_fact`, `job_posting`, `company`, `resume_claim`) | `candidate_fact` and `resume_claim` activate only if the deferred facts tables are built |
 | entity_id | uuid NN | |
-| model | text NN | OpenRouter embedding model slug |
+| model | text | OpenRouter embedding model slug; **null until the model is picked (answer 2)** |
 | content_sha256 | text NN | Skip re-embedding unchanged text (embeddings are deterministic) |
-| embedding | extensions.vector(N) NN | **N depends on the model choice, open decision** (e.g. 1536 for `openai/text-embedding-3-small`) |
 
-U (entity_type, entity_id, model). HNSW indexes with `vector_cosine_ops` (cosine is what OpenRouter recommends), created **per entity_type as partial indexes** (`where entity_type = 'job_posting'` etc.). This sidesteps the pgvector caveat that filtering an HNSW search can return fewer rows than requested, because each search hits a pre-filtered index.
+U (entity_type, entity_id, model). The **vector column is deliberately absent**: pgvector needs the dimension fixed at column definition, and the dimension follows the model. When the model is picked (before Stage 2 semantic matching), a migration adds `embedding extensions.vector(N) NN` plus HNSW `vector_cosine_ops` indexes created per entity_type as partial indexes, which sidesteps the pgvector caveat that filtering an HNSW search can return fewer rows than requested.
 
-Uses:
-
-- JD to `candidate_facts` similarity: which real facts best answer a posting (Stage 2 scoring input, Stage 3 selection). Similarity only ranks facts; it never creates content.
-- Company dedupe when the domain is unknown
-- Posting dedupe across job boards (same role, different URL)
+Uses when activated: JD to FACTS similarity (which real facts best answer a posting, Stage 2 and 3 input; ranking only, never content creation), company dedupe within a user when the domain is unknown, posting dedupe across job boards.
 
 ## 5. Security (RLS)
 
@@ -537,11 +512,11 @@ Applied to every `public` table, following the Supabase guide:
 2. `revoke all ... from anon, authenticated`, then grant only what the dashboard needs to `authenticated`. `anon` gets nothing anywhere.
 3. One policy per operation, always `to authenticated`, always `(select auth.uid()) = user_id` (the `select` wrapper caches the call per statement).
 4. A btree index with `user_id` leading on every user-owned table, since policies filter on it.
-5. Global tables (`companies`, `company_snapshots`, `company_news`, `job_postings`, `event_types`): select-only `using (true)` for `authenticated`, no client writes.
-6. `embeddings`: select where `user_id is null or user_id = (select auth.uid())`.
+5. Per-user world (answer 1): every table, including companies/snapshots/news/postings, uses the standard `(select auth.uid()) = user_id` policies. No `using (true)` rows anywhere.
+6. `event_types` is the one shared lookup: select-only for `authenticated`, writes by the agent role only.
 7. Analytics views use `with (security_invoker = true)` so they respect RLS. Materialized views live in `private` and are exposed only through `security definer` functions that filter on `auth.uid()` (with `set search_path = ''`).
 8. Append-only tables (`events`, `email_verifications`, `company_snapshots`): no update/delete grants for anyone except the agent role.
-9. If files move to Supabase Storage: private buckets `resumes` and `prep`, object path `{user_id}/{opportunity_id}/...`, storage policies keyed on the first path segment.
+9. **Supabase Storage (answer 3):** private buckets `resumes` and `prep`; object paths `{user_id}/{opportunity_id}/...`; storage policies keyed on the first path segment so each user reaches only their own prefix.
 10. Policy tests per table under `supabase/tests/` with pgTAP, run by `supabase test db`.
 
 ## 6. Analytics layer
@@ -644,7 +619,14 @@ All 40 covered. Additions beyond the PDF: candidate facts and claim traceability
 | Embedding model change | New rows with the new `model`; if dimensions change, add a second vector column/table and reindex, old rows stay valid |
 | Large email bodies | Move `body_text` to Storage, keep a snippet column |
 
-## 10. Expansion hooks (deliberately not built now)
+## 10. Deferred and expansion hooks
+
+### Deferred by lemon (2026-10-01)
+
+- **FACTS atomization (`candidate_facts` + `resume_claims`):** revisit when Stage 3 is built. The deferred design, ready to migrate then: `candidate_facts(user_id, document_id FK, line_ref, category, text, status in confirmed/unresolved/false, metadata jsonb)` and `resume_claims(resume_version_id FK, section, position, claim_text, fact_id FK NN)` with a trigger rejecting claims backed by status `false` facts, and one fact per claim to block merge inflation.
+- **Embedding model + vector column:** when the model is picked (before Stage 2 semantic matching), a migration adds `embeddings.embedding extensions.vector(N)` for the chosen dimension plus per-entity-type partial HNSW cosine indexes. The `embeddings` rows can start populating (model null) only after that migration.
+
+### Deliberately not built now
 
 - **LLM usage table:** `llm.call` events cover it; promote to a table if cost reporting gets heavy.
 - **A/B testing:** `outreach_messages.template_key` already records the variant; add `experiments` and `experiment_variants` tables and join on it.
@@ -652,10 +634,10 @@ All 40 covered. Additions beyond the PDF: candidate facts and claim traceability
 - **Google Sheets view:** a read-only export of `v_campaign_funnel`-style views, never a source of truth.
 - **New fields generally:** add to `attributes` first, promote to columns when queried.
 
-## 11. Open questions for lemon
+## 11. Open questions: RESOLVED (2026-10-01)
 
-1. **Shared company tables:** company intel, news, and postings are global (shared across users) to save research cost. If users should never see each other's discovered companies, these become per-user, at the cost of duplicate research. OK as designed?
-2. **Embedding model:** fixes the vector dimension. Needs a pick from OpenRouter's embedding models (e.g. `openai/text-embedding-3-small`, 1536 dims, or `qwen/qwen3-embedding-0.6b`).
-3. **File storage:** docs currently say local filesystem. Since we are on Supabase now, Supabase Storage (private buckets) is the natural home for resume PDFs and prep files. The `storage_backend` column supports either. Switch?
-4. **Email body retention:** storing full reply text (PDF col AA) is PII. Keep full text, or snippet only plus Gmail ID (fetch on demand)?
-5. **FACTS.md ingestion:** atomizing FACTS.md into `candidate_facts` rows is what lets the DB enforce the One Rule. That needs a parser for FACTS.md's format. Agree with that approach?
+1. Company data: **per-user copies**, no sharing.
+2. Embedding model: **deferred**; embeddings table created without the vector column.
+3. Files: **Supabase Storage**, private `resumes` and `prep` buckets.
+4. Email retention: **full reply text**.
+5. FACTS.md: **stays a plain file**; atomization deferred to Stage 3.
