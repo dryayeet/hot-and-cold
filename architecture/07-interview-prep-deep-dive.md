@@ -64,7 +64,7 @@ Detailed company, role, and interview research after a positive response. This s
 
 ## Output
 
-Research is written to **local markdown files** in a per-company prep folder (e.g. `prep/<company>/...`, mirroring the resume_lab convention; **AMBIGUITY: exact file structure undecided, tracked in todo.md**), with pointers (file paths) recorded in the SQLite database under the prep fields: company deep-dive, role deep-dive, fit analysis, interview structure, top 10 questions, prep plan, interview schedule once known.
+Research is written to **local markdown files** in a per-company prep folder (e.g. `prep/<company>/...`, mirroring the resume_lab convention; **AMBIGUITY: exact file structure undecided, tracked in todo.md**), with pointers (file paths) recorded in the database (`interview_prep_packs`, `interviews`; see `08-database-schema.md`) under the prep fields: company deep-dive, role deep-dive, fit analysis, interview structure, top 10 questions, prep plan, interview schedule once known.
 
 ## HITL gates
 
@@ -73,7 +73,7 @@ None enforced by the agent here beyond logging; prep consumption is human. Inter
 ## Tools
 
 - **OpenRouter API** (lemon's key, model TBD) with web search (native or the `web` plugin / Exa engine, see Stage 1 for grounded plugin details) as the research engine. No Claude API anywhere in this project
-- **SQLite** for the prep field pointers
+- **Supabase Postgres** for the prep field pointers
 - **Local markdown files** for the prep content itself. No Google Sheets, no Google Drive (lemon, 2026-10-01)
 
 ## Future roadmap items extending this stage

@@ -81,7 +81,7 @@ Lemon reviews all drafts before anything leaves the account:
 - **Gmail API** via `google-api-python-client` (drafting, sending, scheduling)
 - **OpenRouter API** (lemon's key, model TBD): drafting and tone checking. No Claude API anywhere in this project (lemon, 2026-10-01)
 - Scheduling: APScheduler / cron per the PDF tech stack
-- **SQLite** for the send log and status fields
+- **Supabase Postgres** for the send log and status fields (`outreach_messages`, `scheduled_actions`, `events`; see `08-database-schema.md`)
 
 ## Risks (from the PDF)
 

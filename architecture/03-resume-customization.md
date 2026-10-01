@@ -60,7 +60,7 @@ Recompile and re-run the gate after each change. If still over one page: flag fo
 
 - Save PDF as `resume_CompanyName.pdf` (mail stage names the attachment `Prajwal_Pandey_[CompanyName].pdf`)
 - Store locally in the repo output area (e.g. `out/resumes/`). No Google Drive upload at this stage (lemon, 2026-10-01); the DB stores the local path, and the Drive/object-storage question is revisited at the Supabase migration
-- Log the customizations applied to the SQLite database
+- Log the customizations applied to the database (`resume_versions`, with every bullet traced to a fact in `resume_claims`; see `08-database-schema.md`)
 
 ## Anti-hallucination constraints (imported from resume_lab CLAUDE.md)
 
@@ -85,7 +85,7 @@ These govern what the agent may write into a customized resume:
 - Parsing/editing: `pylatexenc` / regex
 - Compile: `tools/tectonic.exe` (see toolchain decision and validation ambiguity above)
 - Validation: `tools/pagecount.py` (to be provided by lemon); PyPDF2/pdfplumber remain available for metadata extraction per the PDF
-- Storage: local filesystem + SQLite (no Google Drive for now)
+- Storage: local filesystem (or Supabase Storage, open question in `08-database-schema.md`) + Supabase Postgres. No Google Drive for now
 
 ## HITL gates
 
