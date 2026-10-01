@@ -1,6 +1,6 @@
 # Stage 6: Response Tracking & Follow-Up Orchestration
 
-Sources: `Outreach agent.pdf`, sections "Layer 6: Response Tracking & Follow-Up Orchestration", "Phase 7: Response Tracking", "Phase 8: Follow-Up Workflow", scheduling rules. Grounded in that PDF, as revised by lemon on 2026-10-01 (Gmail API confirmed; OpenRouter instead of Claude API; SQLite instead of Sheets).
+Sources: `Outreach agent.pdf`, sections "Layer 6: Response Tracking & Follow-Up Orchestration", "Phase 7: Response Tracking", "Phase 8: Follow-Up Workflow", scheduling rules. Grounded in that PDF, as revised by lemon on 2026-10-01 (Gmail API confirmed; OpenRouter instead of Claude API; Supabase Postgres instead of Sheets).
 
 Part of the LangGraph agent: this stage is a node/subgraph in the graph.
 
@@ -20,7 +20,7 @@ Automated detection:
 
 Manual classification (for ambiguous emails): lemon flags as no response, rejection, "not hiring", forwarded, or interview request. Rejections in particular go to manual review per Phase 7.
 
-On every classification, log: response type, response date, response details (relevant text copied from the email), update the SQLite database.
+On every classification, log: response type, response date, response details (relevant text copied from the email), update the database (`inbound_messages`; follow-up timers live in `scheduled_actions`, see `08-database-schema.md`).
 
 ## Follow-up workflow (only if "No Response")
 
@@ -76,7 +76,7 @@ Automated reminders for follow-ups; all follow-up drafts sitting in Gmail awaiti
 - **Gmail API** for inbox checks and draft creation (confirmed by lemon, 2026-10-01)
 - **OpenRouter API** (lemon's key, model TBD) for classification assist (auto-reply / forwarded / interview request detection). No Claude API anywhere in this project
 - APScheduler / python-cron for the daily background job and 8:30 AM IST sending window
-- **SQLite** for response and follow-up fields
+- **Supabase Postgres** for response and follow-up fields, plus the `scheduled_actions` queue that makes the Day 7 / Day 14 / 5-day-recheck timers durable across restarts
 
 ## Success metric this stage feeds
 

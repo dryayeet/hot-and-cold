@@ -1,6 +1,6 @@
 # Stage 2: Matching & Quality Gate
 
-Source: `Outreach agent.pdf`, section "Layer 2: Matching & Quality Gate". Grounded in that PDF, as revised by lemon on 2026-10-01 (OpenRouter instead of Claude API, SQLite instead of Google Sheets).
+Source: `Outreach agent.pdf`, section "Layer 2: Matching & Quality Gate". Grounded in that PDF, as revised by lemon on 2026-10-01 (OpenRouter instead of Claude API, Supabase Postgres instead of Google Sheets).
 
 Part of the LangGraph agent: this stage is a node/subgraph in the graph.
 
@@ -51,7 +51,7 @@ Companies below the threshold stop here until lemon reviews them. This is the fi
 ## Tools
 
 - **OpenRouter API** (lemon's key, model TBD): JD parsing and cross-referencing. No Claude API anywhere in this project (lemon, 2026-10-01)
-- **SQLite** for persistence. **AMBIGUITY: DB structure to be discussed, tracked in todo.md and `05-master-database.md`**
+- **Supabase Postgres** for persistence (`match_assessments`, `hitl_reviews` for the low-match gate; see `08-database-schema.md`, pending approval)
 
 ## Risks addressed
 

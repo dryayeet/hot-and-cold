@@ -1,24 +1,23 @@
 # Stage 5: Master Database
 
-Source: `Outreach agent.pdf`, sections "Layer 5: Google Sheets Master Database", "Google Sheets Master Database Schema (Detailed)", "Metrics & Analysis". Revised by lemon on 2026-10-01: **local SQLite now, Supabase (Postgres) later, Google Sheets maybe even later.** The PDF's Sheets schema is preserved below as the target field list.
+Source: `Outreach agent.pdf`, sections "Layer 5: Google Sheets Master Database", "Google Sheets Master Database Schema (Detailed)", "Metrics & Analysis". Revised by lemon on 2026-10-01: **Supabase Postgres from day one** (the earlier SQLite-now plan was dropped the same day), Google Sheets maybe later as a read-only view.
 
 Part of the LangGraph agent: this stage is shared state/persistence used by every other node.
 
-> **AMBIGUITY / DISCUSSION NEEDED: the SQLite table structure is not designed yet.** The A-AN column list below is the field inventory, not a table design. Decisions pending: one wide table vs normalized (companies / contacts / mails / follow_ups / prep), how to represent the one-row-per-company+role grain, status enums, and the migration path to Supabase. Tracked in todo.md.
+> **The schema is designed.** The full design (tables, RLS, indexes, events, embeddings, analytics views) lives in [`08-database-schema.md`](08-database-schema.md) and is **PROPOSED, awaiting lemon's approval**. This doc keeps the original PDF field inventory (columns A-AN) as the requirements record and maps it to the design.
 
 ## Goal
 
-Single source of truth for all outreach data, response tracking, and interview prep. Conceptual grain from the PDF: one record = one Company + Role pairing.
+Single source of truth for all outreach data, response tracking, and interview prep. Grain unchanged from the PDF: **one `opportunities` row = one user + Company + Role**.
 
-## Storage decision timeline (lemon, 2026-10-01)
+## Storage decisions (lemon, 2026-10-01)
 
-1. **Now: local SQLite** (stdlib `sqlite3`, no cloud dependency)
-2. **Later: migrate to Supabase Postgres** when the project needs a real server DB
-3. **Maybe later: Google Sheets** as a human-readable view on top, if wanted
+1. **Supabase Postgres from day one** (multi-user ready, RLS, pgvector, jsonb expansion columns)
+2. **Maybe later: Google Sheets** as a human-readable view on top, never a source of truth
 
-The PDF's original Sheets-only rationale (human-readable, pivot/filter, CSV export) is retained as context for why the schema is flat and readable.
+The PDF's original Sheets-only rationale (human-readable, pivot/filter, CSV export) survives as the design's readability rules: flat readable tables, lookup vocabularies, analytics views that answer the pivot questions.
 
-## Target field inventory (from the PDF schema, columns A-AN)
+## Field inventory (from the PDF schema, columns A-AN)
 
 ### Identification
 
@@ -51,7 +50,7 @@ The PDF's original Sheets-only rationale (human-readable, pivot/filter, CSV expo
 - Match Score (1-10)
 - Keyword Gaps (e.g. "Missing: Kubernetes, Docker")
 - Resume Customizations Applied (bullet point list)
-- Customized Resume Link (was a Google Drive URL; **now a local filesystem path**, revisit on Supabase migration: could become object storage)
+- Customized Resume Link (was a Google Drive URL; now a local path or Supabase Storage, open question in the schema doc)
 
 ### Mail Tracking
 
@@ -71,7 +70,7 @@ The PDF's original Sheets-only rationale (human-readable, pivot/filter, CSV expo
 
 ### Interview Prep (only if positive response)
 
-- Company Deep-Dive Summary (was rich text link; **now link to a local prep file**)
+- Company Deep-Dive Summary (now a link to a local prep file)
 - Role Deep-Dive Summary
 - Your Fit Analysis
 - Interview Structure (number of rounds, types)
@@ -86,15 +85,16 @@ The PDF's original Sheets-only rationale (human-readable, pivot/filter, CSV expo
 
 ## Which stage writes what
 
-| Stage | Fields written |
+| Stage | Tables written |
 | --- | --- |
-| 1 Discovery | identification, company intelligence, contacts |
-| 2 Matching | match score, keyword gaps (+ reasoning) |
-| 3 Resume | customizations applied, resume path |
-| 4 Mail + Sending | draft date, mail status, sent date (+ send-time analytics log) |
-| 6 Tracking/Follow-up | response type/date/details, follow-up fields |
-| 7 Interview Prep | prep fields |
-| Human (anytime) | notes, tags |
+| 1 Discovery | `companies`, `company_snapshots`, `company_news`, `job_postings`, `opportunities`, `contacts`, `contact_emails`, `email_verifications` |
+| 2 Matching | `match_assessments`, `hitl_reviews` (low-match gate) |
+| 3 Resume | `resume_versions`, `resume_claims`, `hitl_reviews` (overflow gate) |
+| 4 Mail + Sending | `outreach_messages`, `hitl_reviews` (draft approval), `scheduled_actions` |
+| 6 Tracking/Follow-up | `inbound_messages`, `outreach_messages` (follow-ups), `scheduled_actions` |
+| 7 Interview Prep | `interview_prep_packs`, `interviews` |
+| Agent runtime | `agent_runs`, `events` (every state change) |
+| Human (anytime) | `opportunities.notes` / `.tags`, `hitl_reviews.decided_at` |
 
 ## Derived metrics (PDF "Metrics & Analysis")
 
@@ -107,7 +107,9 @@ The PDF's original Sheets-only rationale (human-readable, pivot/filter, CSV expo
 - Best-performing keywords/skills
 - **Plus (lemon, 2026-10-01): send-time analytics, which send times correlate with responses, to optimize scheduling as data accumulates**
 
+Implemented as the analytics views in `08-database-schema.md` section 6 (`v_campaign_funnel`, `v_response_rates`, `v_time_to_response`, `v_send_time_performance`, `v_keyword_performance`, `v_verification_accuracy`, `v_hitl_latency`).
+
 ## Tools
 
-- `sqlite3` (Python stdlib), no external service
-- Migration path to Supabase Postgres: to be planned (see todo.md)
+- **Supabase Postgres**: design in `08-database-schema.md`, pending approval; then `supabase/migrations/0001_init.sql`
+- Agent connects server-side with a role that bypasses RLS; future dashboard clients go through RLS

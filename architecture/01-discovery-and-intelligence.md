@@ -1,6 +1,6 @@
 # Stage 1: Discovery & Intelligence
 
-Source: `Outreach agent.pdf`, sections "Layer 1: Discovery & Intelligence", "Phase 1: Initialization", "Phase 2: Company Discovery", as revised by lemon on 2026-10-01 (OpenRouter instead of Claude API, SQLite instead of Google Sheets, deliverability-focused email verification).
+Source: `Outreach agent.pdf`, sections "Layer 1: Discovery & Intelligence", "Phase 1: Initialization", "Phase 2: Company Discovery", as revised by lemon on 2026-10-01 (OpenRouter instead of Claude API, Supabase Postgres instead of Google Sheets, deliverability-focused email verification).
 
 Part of the LangGraph agent: this stage is a node/subgraph in the graph.
 
@@ -70,7 +70,7 @@ Each company also gets a relevance score (1-10) against the role prompt; keep on
 
 ### 4. Persist
 
-Write the company profile row to the local SQLite database (schema in `05-master-database.md`, which now tracks the target fields; table structure is flagged for discussion). No Google Sheets or Google Drive at this stage; the database migrates to Supabase Postgres later.
+Write the results to Supabase Postgres: global `companies`, `company_snapshots`, `company_news`, `job_postings`; per-user `opportunities`, `contacts`, `contact_emails`, `email_verifications` (full design in `08-database-schema.md`, pending approval). No Google Sheets or Google Drive at this stage.
 
 ## Output
 
@@ -85,7 +85,7 @@ A list of 50 companies with structured data: name, funding round, growth signal,
   - Newer alternative: the `openrouter:web_search` server tool, which lets the model decide when and how often to search rather than one forced search per request
 - **Contact discovery**: LLM web search and/or Hunter.io Email Finder / Domain Search (AMBIGUITY, see above)
 - **Email verification**: SMTP ping and/or verifier API (AMBIGUITY, see above); `email-validator` kept only as a syntax/DNS pre-filter
-- **SQLite** (stdlib `sqlite3`) for persistence
+- **Supabase Postgres** for persistence (via the Supabase Python client or a direct Postgres connection; design in `08-database-schema.md`, pending approval)
 
 ## HITL gates
 

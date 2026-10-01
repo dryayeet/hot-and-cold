@@ -7,7 +7,8 @@ Running checklist for the outreach-agent. Format: `- [ ] item: context`. Check i
 - [ ] Pick OpenRouter model(s) for research/drafting/classification: must have web search ability, either native web search or via OpenRouter's `web` plugin (`:online` suffix; Exa-powered for non-native models). One model for everything or different models per stage, TBD. Context: Stage 1, 2, 4, 6, 7 all need it; nothing can be built against a real API until this is chosen
 - [ ] Decide contact discovery method: LLM web search vs dedicated email-finder API (Hunter.io Email Finder / Domain Search) vs hybrid. Context: Stage 1; Hunter has department/seniority filters that fit HR/TA lookups well; API costs apply
 - [ ] Decide email verification approach: SMTP RCPT TO ping (free, catch-all domains lie, IP reputation risk) vs paid verifier API (Hunter Email Verifier, ZeroBounce, NeverBounce) vs hybrid (cheap ping first, API for uncertain). Context: Stage 1; requirement is "is this email real", not syntax
-- [ ] Discuss DB structure: SQLite table design (wide table vs normalized: companies / contacts / mails / follow_ups / prep), status enums, grain (one record per company+role), and the later SQLite to Supabase Postgres migration path. Context: `architecture/05-master-database.md`; blocks Stage 1 persistence work
+- [ ] Approve DB schema: proposed in `architecture/08-database-schema.md` (Supabase Postgres, multi-user RLS, pgvector, events). Lemon chose straight to Postgres, no SQLite phase. After approval, write `supabase/migrations/0001_init.sql`
+- [ ] Answer the 5 open questions in `08-database-schema.md` section 11: shared vs per-user company tables, embedding model (fixes vector dimension), Supabase Storage vs local files, email body retention, FACTS.md parsing into `candidate_facts`
 - [ ] Decide Stage 7 prep output format: file structure of the per-company local markdown prep folder. Context: `architecture/07-interview-prep-deep-dive.md`
 
 ## Assets needed from lemon
@@ -24,6 +25,6 @@ Running checklist for the outreach-agent. Format: `- [ ] item: context`. Check i
 
 ## Later / deferred
 
-- [ ] Migrate SQLite to Supabase Postgres, revisit resume-storage and prep-storage locations (local paths become URLs or object storage)
+- [ ] Decide resume/prep file storage: local paths vs Supabase Storage private buckets (`storage_backend` column supports both)
 - [ ] Optionally add Google Sheets as a human-readable view on top of the DB
 - [ ] Resume PDF tools beyond pagecount (PyPDF2/pdfplumber metadata) if needed
