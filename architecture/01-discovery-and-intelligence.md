@@ -22,7 +22,7 @@ The agent validates all three before starting:
 
 ## Revised flow (lemon, 2026-10-01)
 
-From the three inputs, the LLM drives role-opening search: it searches for companies hiring for the described roles. Two tracks then run, in parallel where possible:
+From the three inputs, the default LLM (`gpt-5.4-mini`) drives role-opening search: it searches for companies hiring for the described roles. Two tracks then run, in parallel where possible:
 
 1. **Company intelligence gathering** per company found (funding, growth, news, sentiment, leadership, traffic)
 2. **Contact discovery**: find HR / TA / hiring-manager emails, either by the LLM (web search) or via a dedicated email-finder tool such as Hunter.io's Email Finder (name + domain, most likely address) or Domain Search (all addresses for a domain, filterable by department=hr and seniority). **AMBIGUITY: which method, LLM search vs dedicated finder API, or a hybrid, is undecided. See todo.md.**
@@ -33,12 +33,9 @@ Then **email validation**, then the outputs feed Stage 2 (matching).
 
 Per lemon, the question is "is this email real", because LLM-extracted addresses can be hallucinated or stale (person left, domain dead). Syntax checking alone is insufficient.
 
-Grounded options:
+For now, use **SMTP-level ping** (RCPT TO handshake against the MX host) as the deliverability check: free, no third party, but catch-all domains can still look valid and aggressive pinging can get the IP flagged. Treat results as a signal, not truth.
 
-- **SMTP-level ping** (RCPT TO handshake against the MX host): free, no third party, but catch-all domains accept everything and report invalid addresses as valid, and aggressive pinging can get your IP flagged. Treat results as a signal, not truth.
-- **Verifier API** (e.g. Hunter.io Email Verifier: returns a deliverability judgment for the address; alternatives in the same category: ZeroBounce, NeverBounce): paid per check, more reliable, catches disposable/role-based/stale signals better.
-
-**AMBIGUITY: verification tool and method undecided (self-hosted SMTP ping vs paid API vs hybrid: cheap ping first, API only for uncertain results). See todo.md.** Syntax checks remain as a free pre-filter regardless.
+**AMBIGUITY: verification method is intentionally SMTP-only for now.** Syntax checks remain as a free pre-filter regardless.
 
 ## Process (per company)
 
@@ -78,13 +75,9 @@ A list of 50 companies with structured data: name, funding round, growth signal,
 
 ## Tools
 
-- **OpenRouter API** (lemon's key; specific model TBD, see todo.md). Requirements: web search ability, either a model with native web search or OpenRouter's `web` plugin. Grounded details of the OpenRouter web story:
-  - `:online` model-slug suffix or the `plugins: [{id: "web"}]` parameter activates search for any model
-  - For models without native search, the plugin is powered by **Exa** (auto mode by default; modes instant/fast/auto/deep-lite/deep/deep-reasoning, from $0.007 per request, 10 results included)
-  - Engines: `native`, `exa`, `firecrawl` (BYOK), `parallel`, `perplexity`; domain filtering via `include_domains`/`exclude_domains` (Exa supports both simultaneously)
-  - Newer alternative: the `openrouter:web_search` server tool, which lets the model decide when and how often to search rather than one forced search per request
+- **OpenRouter API** (lemon's key; default model `gpt-5.4-mini`). Use the `openrouter:web_search` server tool for live web search; it is the preferred surface and lets the model decide when to search. For models without native search, OpenRouter falls back to Exa by default (`engine: auto`), with optional `exa`, `parallel`, `firecrawl`, or `perplexity` engines and domain filtering support.
 - **Contact discovery**: LLM web search and/or Hunter.io Email Finder / Domain Search (AMBIGUITY, see above)
-- **Email verification**: SMTP ping and/or verifier API (AMBIGUITY, see above); `email-validator` kept only as a syntax/DNS pre-filter
+- **Email verification**: SMTP ping only for now; `email-validator` kept only as a syntax/DNS pre-filter
 - **Supabase Postgres** for persistence (via the Supabase Python client or a direct Postgres connection; design in `08-database-schema.md`, pending approval)
 
 ## HITL gates
