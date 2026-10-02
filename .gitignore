@@ -5,3 +5,4 @@ test.py
 testes.py
 base_resume.tex
 projects_and_exp.md
+__pycache__/
