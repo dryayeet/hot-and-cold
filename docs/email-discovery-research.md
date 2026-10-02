@@ -7,25 +7,20 @@ Build a practical India-only contact discovery path that can keep working when p
 ## What We Learned
 
 - Hunter is useful when quota is available, but the current plan can hard-stop contact discovery.
-- SerpApi is a search layer, not an email finder.
-- The best SerpApi use here is discovery of public company-owned pages, ATS pages, and careers surfaces.
+- Serper is a search layer, not an email finder.
+- The best Serper use here is discovery of public company-owned pages, ATS pages, and careers surfaces.
 - Open-source tools can do most of the crawling and extraction work, but they do not replace contact quality controls.
 
-## SerpApi Tuning For This Repo
+## Serper Tuning For This Repo
 
-Use SerpApi to seed URLs, then scrape the pages locally.
+Use Serper to seed URLs, then scrape the pages locally.
 
 Recommended search parameters:
 
-- `engine=google`
 - `gl=in`
 - `hl=en`
-- `location=India`
-- `cr=countryIN`
-- `safe=active`
-- `filter=0` when you want broader coverage
-- `no_cache=false` to reuse cached searches when possible
-- `output=json`
+- `num=10`
+- `page=1` and subsequent page numbers for pagination
 
 Recommended query patterns:
 
@@ -67,7 +62,7 @@ Best browser automation tool:
 
 ## Recommended Pipeline
 
-1. Seed URLs from SerpApi.
+1. Seed URLs from Serper.
 2. Crawl company-owned site surfaces, careers pages, team pages, contact pages, and ATS pages.
 3. Extract:
    - `mailto:` links
@@ -111,7 +106,7 @@ Notes:
 
 For this repo, the best path is:
 
-- Use SerpApi only as a URL discovery layer.
+- Use Serper only as a URL discovery layer.
 - Crawl the discovered pages locally.
 - Extract emails from raw HTML and page text.
 - Add site-specific adapters for common ATS platforms later.
@@ -119,4 +114,4 @@ For this repo, the best path is:
 
 ## Next Implementation Step
 
-Add a local crawler fallback that can run when Hunter is exhausted and SerpApi returns too few useful pages.
+Add a local crawler fallback that can run when Hunter is exhausted and Serper returns too few useful pages.
