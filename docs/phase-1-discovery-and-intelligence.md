@@ -136,8 +136,8 @@ Important tables touched in Phase 1:
 - Email verification uses SMTP ping only.
 - Company discovery is limited to India.
 - Contact discovery is restricted to India and biased toward HR / TA / hiring-manager titles, not generic employees.
-- SerpApi is used as a fallback search layer for public careers and ATS pages when Hunter returns too few contacts.
-- The SerpApi fallback only runs when `SERPAPI_API_KEY` is set.
+- Serper is used as a fallback search layer for public careers and ATS pages when Hunter returns too few contacts.
+- The Serper fallback only runs when `SERPER_API_KEY` is set.
 - The CLI is still monolithic on purpose, so Phase 1 can be split into files later without changing behavior.
 
 The LLM pre-pass produces a `search_plan` with:

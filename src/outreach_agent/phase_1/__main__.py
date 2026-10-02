@@ -10,9 +10,11 @@ import sys
 import argparse
 import json
 import os
+import random
 import re
 import smtplib
 import subprocess
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -31,7 +33,9 @@ from outreach_agent.devtools.db import connect, load_env
 
 OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
 HUNTER_BASE_URL = "https://api.hunter.io/v2"
-SERPAPI_SEARCH_URL = "https://serpapi.com/search.json"
+SERPER_SEARCH_URL = "https://google.serper.dev/search"
+SERPER_MIN_INTERVAL = 2.5
+_SERPER_NEXT_SEARCH_AT = 0.0
 DEFAULT_MODEL = os.environ.get("OPENROUTER_MODEL", "openai/gpt-5.4-mini")
 HUNTER_CONTACTS_UNAVAILABLE = False
 
@@ -465,14 +469,14 @@ def discover_contacts(
                     break
 
     if len(picked) < max_contacts:
-        serpapi_contacts = discover_serpapi_contacts(
+        serper_contacts = discover_serper_contacts(
             company,
             search_plan,
             max_contacts=max_contacts - len(picked),
             smtp_timeout=smtp_timeout,
             seen_emails=seen_emails,
         )
-        for contact in serpapi_contacts:
+        for contact in serper_contacts:
             add_contact_candidate(picked, seen_emails, contact)
             if len(picked) >= max_contacts:
                 break
@@ -480,7 +484,7 @@ def discover_contacts(
     return picked
 
 
-def discover_serpapi_contacts(
+def discover_serper_contacts(
     company: dict[str, Any],
     search_plan: SearchPlan,
     *,
@@ -488,7 +492,7 @@ def discover_serpapi_contacts(
     smtp_timeout: int,
     seen_emails: set[str],
 ) -> list[ContactCandidate]:
-    if not os.environ.get("SERPAPI_API_KEY"):
+    if not os.environ.get("SERPER_API_KEY") or os.environ["SERPER_API_KEY"].startswith("your-"):
         return []
 
     domain = company.get("domain")
@@ -517,7 +521,7 @@ def discover_serpapi_contacts(
     page_urls: list[tuple[str, dict[str, Any], str]] = []
     seen_urls: set[str] = set()
     for query in queries:
-        payload = serpapi_search(query)
+        payload = serper_search(query)
         for result in payload.get("organic_results", [])[:8]:
             url = result.get("link")
             if not url or url in seen_urls:
@@ -567,28 +571,38 @@ def add_contact_candidate(
     picked.append(contact)
 
 
-def serpapi_search(query: str) -> dict[str, Any]:
-    api_key = os.environ.get("SERPAPI_API_KEY")
-    if not api_key:
+def serper_search(query: str) -> dict[str, Any]:
+    global _SERPER_NEXT_SEARCH_AT
+    api_key = os.environ.get("SERPER_API_KEY")
+    if not api_key or api_key.startswith("your-"):
         return {}
 
-    params = {
-        "engine": "google",
+    delay = max(0.0, _SERPER_NEXT_SEARCH_AT - time.monotonic())
+    if delay:
+        time.sleep(delay)
+    _SERPER_NEXT_SEARCH_AT = time.monotonic() + SERPER_MIN_INTERVAL + random.uniform(0.0, 0.5)
+    payload = {
         "q": query,
-        "api_key": api_key,
         "gl": "in",
         "hl": "en",
-        "cr": "countryIN",
-        "location": "India",
-        "safe": "active",
-        "filter": "0",
-        "no_cache": "false",
+        "num": 10,
     }
-    url = f"{SERPAPI_SEARCH_URL}?{urllib.parse.urlencode(params, doseq=True)}"
-    req = urllib.request.Request(url, method="GET")
+    req = urllib.request.Request(
+        SERPER_SEARCH_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "X-API-KEY": api_key,
+        },
+        method="POST",
+    )
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+            result = json.loads(resp.read().decode("utf-8"))
+            if isinstance(result, dict) and isinstance(result.get("organic"), list):
+                result["organic_results"] = result["organic"]
+            return result
     except urllib.error.HTTPError:
         return {}
     except (TimeoutError, ValueError, OSError):
@@ -745,7 +759,7 @@ def extract_contacts_from_page(
         syntax_result = "valid" if syntax_ok else "invalid"
         source_detail = {
             "syntax": syntax_result,
-            "serpapi": {
+            "serper": {
                 "url": url,
                 "title": page_title,
                 "query": search_query,
@@ -764,7 +778,7 @@ def extract_contacts_from_page(
                 role_type=role_type,
                 linkedin_url=None,
                 email=email,
-                source="serpapi",
+                source="serper",
                 source_detail=source_detail,
             )
         )
