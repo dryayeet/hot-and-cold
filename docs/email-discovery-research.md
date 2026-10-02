@@ -22,6 +22,21 @@ Recommended search parameters:
 - `num=10`
 - `page=1` and subsequent page numbers for pagination
 
+## Serper Provider Setup
+
+Phase 1 calls Serper's Google Search endpoint directly:
+
+- Endpoint: `https://google.serper.dev/search`
+- Method: `POST`
+- Authentication: `X-API-KEY: $SERPER_API_KEY`
+- Required environment variable: `SERPER_API_KEY`
+
+The request body contains the query plus `gl=in`, `hl=en`, and `num=10`. The
+Phase 1 CLI paces requests by at least 2.5 seconds, adds small jitter, and
+returns an empty fallback result when the key is missing or a provider request
+fails. Serper remains a URL discovery layer; it does not verify that an email
+belongs to a person.
+
 Recommended query patterns:
 
 - `site:{domain} "{company}" India careers`
